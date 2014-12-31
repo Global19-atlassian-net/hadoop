@@ -102,6 +102,7 @@ public final class DomainSocketWatcher implements Closeable {
   private class NotificationHandler implements Handler {
     public boolean handle(DomainSocket sock) {
       try {
+        kicked = false;
         if (LOG.isTraceEnabled()) {
           LOG.trace(this + ": NotificationHandler: doing a read on " +
             sock.fd);
@@ -228,6 +229,15 @@ public final class DomainSocketWatcher implements Closeable {
    */
   private boolean closed = false;
 
+  
+  /**
+  * True if we have written a byte to the notification socket. We should not
+  * write anything else to the socket until the notification handler has had a
+  * chance to run. Otherwise, our thread might block, causing deadlock. 
+  * See HADOOP-11333 for details.
+  */
+  private boolean kicked = false;
+  
   public DomainSocketWatcher(int interruptCheckPeriodMs) throws IOException {
     if (loadingFailureReason != null) {
       throw new UnsupportedOperationException(loadingFailureReason);
@@ -346,8 +356,13 @@ public final class DomainSocketWatcher implements Closeable {
    * Wake up the DomainSocketWatcher thread.
    */
   private void kick() {
+    if (kicked) {
+      return;
+    }
+    
     try {
       notificationSockets[0].getOutputStream().write(0);
+      kicked = true;
     } catch (IOException e) {
       if (!closed) {
         LOG.error(this + ": error writing to notificationSockets[0]", e);
