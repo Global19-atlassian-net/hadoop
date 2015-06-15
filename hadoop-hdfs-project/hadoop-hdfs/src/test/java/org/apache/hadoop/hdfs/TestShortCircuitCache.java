@@ -45,6 +45,9 @@ import org.apache.hadoop.util.Time;
 import org.junit.Assert;
 import org.junit.Assume;
 import org.junit.Test;
+import org.mockito.Mockito;
+import org.mockito.invocation.InvocationOnMock;
+import org.mockito.stubbing.Answer;
 
 import com.google.common.base.Preconditions;
 import com.google.common.base.Supplier;

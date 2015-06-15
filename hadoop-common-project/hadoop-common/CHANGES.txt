@@ -411,6 +411,8 @@ Release 2.3.0 - 2014-02-18
     (Liang Xie via stack)
 
   BUG FIXES
+    HADOOP-11802: DomainSocketWatcher thread terminates sometimes after there
+    is an I/O error during requestShortCircuitShm (cmccabe)
 
     HADOOP-10028. Malformed ssl-server.xml.example. (Haohui Mai via jing9)
 
