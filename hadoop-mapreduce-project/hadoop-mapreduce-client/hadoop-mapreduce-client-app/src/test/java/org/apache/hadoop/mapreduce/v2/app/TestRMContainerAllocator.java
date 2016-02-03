@@ -1793,6 +1793,33 @@ public class TestRMContainerAllocator {
   }
   
   @Test
+  public void testPreemptedContainerEvent() {
+    RMContainerAllocator allocator = new RMContainerAllocator(
+        mock(ClientService.class), mock(AppContext.class));
+
+    TaskAttemptId attemptId = MRBuilderUtils.newTaskAttemptId(MRBuilderUtils
+        .newTaskId(MRBuilderUtils.newJobId(1, 1, 1), 1, TaskType.MAP), 1);
+    ApplicationId applicationId = ApplicationId.newInstance(1, 1);
+    ApplicationAttemptId applicationAttemptId = ApplicationAttemptId
+        .newInstance(applicationId, 1);
+    ContainerId containerId = ContainerId.newInstance(applicationAttemptId, 1);
+    ContainerStatus status = ContainerStatus.newInstance(containerId,
+        ContainerState.RUNNING, "", 0);
+
+    ContainerStatus preemptedStatus = ContainerStatus.newInstance(containerId,
+        ContainerState.RUNNING, "", ContainerExitStatus.PREEMPTED);
+
+    TaskAttemptEvent event = allocator.createContainerFinishedEvent(status,
+        attemptId);
+    Assert.assertEquals(TaskAttemptEventType.TA_CONTAINER_COMPLETED,
+        event.getType());
+
+    TaskAttemptEvent abortedEvent = allocator.createContainerFinishedEvent(
+        preemptedStatus, attemptId);
+    Assert.assertEquals(TaskAttemptEventType.TA_KILL, abortedEvent.getType());
+  }
+  
+  @Test
   public void testUnregistrationOnlyIfRegistered() throws Exception {
     Configuration conf = new Configuration();
     final MyResourceManager rm = new MyResourceManager(conf);
