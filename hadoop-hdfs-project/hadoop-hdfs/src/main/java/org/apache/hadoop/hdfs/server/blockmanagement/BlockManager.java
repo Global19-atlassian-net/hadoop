@@ -1691,7 +1691,7 @@ public class BlockManager {
         return !node.hasStaleStorages();
       }
 
-      if (storageInfo.numBlocks() == 0) {
+      if (storageInfo.getBlockReportCount() == 0) {
         // The first block report can be processed a lot more efficiently than
         // ordinary block reports.  This shortens restart times.
         processFirstBlockReport(node, storage.getStorageID(), newReport);
