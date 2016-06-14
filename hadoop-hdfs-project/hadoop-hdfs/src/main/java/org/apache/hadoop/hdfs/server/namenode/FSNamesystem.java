@@ -507,6 +507,8 @@ public class FSNamesystem implements Namesystem, FSClusterStats,
   private final RetryCache retryCache;
 
   private final AclConfigFlag aclConfigFlag;
+  
+  private final FSImage fsImage;
 
   /**
    * Set the last allocated inode id when fsimage or editlog is loaded. 
@@ -676,6 +678,7 @@ public class FSNamesystem implements Namesystem, FSClusterStats,
     boolean fair = conf.getBoolean("dfs.namenode.fslock.fair", true);
     LOG.info("fsLock is fair:" + fair);
     fsLock = new FSNamesystemLock(fair);
+    this.fsImage = fsImage;
     try {
       resourceRecheckInterval = conf.getLong(
           DFS_NAMENODE_RESOURCE_CHECK_INTERVAL_KEY,
@@ -890,7 +893,8 @@ public class FSNamesystem implements Namesystem, FSClusterStats,
       MetaRecoveryContext recovery = startOpt.createRecoveryContext();
       final boolean staleImage
           = fsImage.recoverTransitionRead(startOpt, this, recovery);
-      if (RollingUpgradeStartupOption.ROLLBACK.matches(startOpt)) {
+      if (RollingUpgradeStartupOption.ROLLBACK.matches(startOpt) ||
+          RollingUpgradeStartupOption.DOWNGRADE.matches(startOpt)) {
         rollingUpgradeInfo = null;
       }
       final boolean needToSave = staleImage && !haEnabled && !isRollingUpgrade(); 
@@ -900,6 +904,8 @@ public class FSNamesystem implements Namesystem, FSClusterStats,
       if (needToSave) {
         fsImage.saveNamespace(this);
       } else {
+        updateStorageVersionForRollingUpgrade(fsImage.getLayoutVersion(),
+            startOpt);
         // No need to save, so mark the phase done.
         StartupProgress prog = NameNode.getStartupProgress();
         prog.beginPhase(Phase.SAVING_CHECKPOINT);
@@ -918,6 +924,18 @@ public class FSNamesystem implements Namesystem, FSClusterStats,
       writeUnlock();
     }
     dir.imageLoadComplete();
+  }
+
+  private void updateStorageVersionForRollingUpgrade(final long layoutVersion,
+      StartupOption startOpt) throws IOException {
+    boolean rollingStarted = RollingUpgradeStartupOption.STARTED
+        .matches(startOpt) && layoutVersion > HdfsConstants
+        .NAMENODE_LAYOUT_VERSION;
+    boolean rollingRollback = RollingUpgradeStartupOption.ROLLBACK
+        .matches(startOpt);
+    if (rollingRollback || rollingStarted) {
+      fsImage.updateStorageVersion();
+    }
   }
 
   private void startSecretManager() {
