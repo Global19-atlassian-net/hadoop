@@ -76,6 +76,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.apache.hadoop.fs.CommonConfigurationKeysPublic.FS_DEFAULT_NAME_KEY;
 import static org.apache.hadoop.fs.CommonConfigurationKeysPublic.FS_TRASH_INTERVAL_DEFAULT;
@@ -253,6 +254,7 @@ public class NameNode implements NameNodeStatusMXBean {
   private final boolean haEnabled;
   private final HAContext haContext;
   protected final boolean allowStaleStandbyReads;
+  private AtomicBoolean started = new AtomicBoolean(false);
 
   
   /** httpServer */
@@ -736,6 +738,7 @@ public class NameNode implements NameNodeStatusMXBean {
       this.stop();
       throw e;
     }
+    this.started.set(true);
   }
 
   protected HAState createHAState(StartupOption startOpt) {
@@ -1554,7 +1557,14 @@ public class NameNode implements NameNodeStatusMXBean {
     }
     terminate(1, t);
   }
-  
+
+  /**
+   * Returns whether the NameNode is completely started
+   */
+  boolean isStarted() {
+    return this.started.get();
+  }
+
   /**
    * Class used to expose {@link NameNode} as context to {@link HAState}
    */
