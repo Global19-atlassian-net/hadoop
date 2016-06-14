@@ -634,4 +634,11 @@ public class DFSConfigKeys extends CommonConfigurationKeys {
   public static final int DEFAULT_DFSCLIENT_HEDGED_READ_THREADPOOL_SIZE = 0;
   public static final String DFS_NFS_KEYTAB_FILE_KEY = "dfs.nfs.keytab.file";
   public static final String DFS_NFS_USER_NAME_KEY = "dfs.nfs.kerberos.principal";
+
+  /**
+   * Add this key to support testcase in HDFS-7359 ONLY.
+   * @author dazhuang.su@dianping.com
+   * @see org.apache.hadoop.hdfs.qjournal.TestSecureNNWithQJM
+   */
+  public static final String DFS_DATA_TRANSFER_PROTECTION_KEY = "dfs.data.transfer.protection";
 }
