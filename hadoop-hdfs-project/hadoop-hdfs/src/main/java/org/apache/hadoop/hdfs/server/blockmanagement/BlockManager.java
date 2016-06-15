@@ -2053,6 +2053,20 @@ public class BlockManager {
   }
 
   /**
+   * Add this method to suport HDFS-8245. Please use the other.
+   * @see #queueReportedBlock(DatanodeDescriptor dn, String storageID, Block block,
+      ReplicaState reportedState, String reason)
+   * @param storageInfo
+   * @param block
+   * @param reportedState
+   * @param reason
+   */
+  private void queueReportedBlock(DatanodeStorageInfo storageInfo, Block block, ReplicaState reportedState,
+      String reason) {
+    queueReportedBlock(storageInfo.getDatanodeDescriptor(), storageInfo.getStorageID(), block, reportedState, reason);
+  }
+
+  /**
    * Try to process any messages that were previously queued for the given
    * block. This is called from FSEditLogLoader whenever a block's state
    * in the namespace has changed or a new block has been created.
@@ -2072,8 +2086,12 @@ public class BlockManager {
       if (LOG.isDebugEnabled()) {
         LOG.debug("Processing previouly queued message " + rbi);
       }
-      processAndHandleReportedBlock(rbi.getNode(), rbi.getStorageID(), 
-          rbi.getBlock(), rbi.getReportedState(), null);
+      if (rbi.getReportedState() == null) {
+        // This is a DELETE_BLOCK request
+        removeStoredBlock(rbi.getBlock(), rbi.getNode());
+      } else {
+        processAndHandleReportedBlock(rbi.getNode(), rbi.getStorageID(), rbi.getBlock(), rbi.getReportedState(), null);
+      }
     }
   }
   
@@ -2732,6 +2750,17 @@ public class BlockManager {
     }
   }
 
+  private void removeStoredBlock(DatanodeStorageInfo storageInfo, Block block,
+      DatanodeDescriptor node) {
+    if (shouldPostponeBlocksFromFuture &&
+        namesystem.isGenStampInFuture(block)) {
+      queueReportedBlock(storageInfo, block, null,
+          QUEUE_REASON_FUTURE_GENSTAMP);
+      return;
+    }
+    removeStoredBlock(block, node);
+  }
+
   /**
    * Modify (block-->datanode) map. Possibly generate replication tasks, if the
    * removed block is still valid.
@@ -2898,8 +2927,8 @@ public class BlockManager {
       throw new IOException(
           "Got incremental block report from unregistered or dead node");
     }
-
-    if (node.getStorageInfo(srdb.getStorage().getStorageID()) == null) {
+    DatanodeStorageInfo storageInfo = node.getStorageInfo(srdb.getStorage().getStorageID());
+    if (storageInfo == null) {
       // The DataNode is reporting an unknown storage. Usually the NN learns
       // about new storages from heartbeats but during NN restart we may
       // receive a block report or incremental report before the heartbeat.
@@ -2911,7 +2940,7 @@ public class BlockManager {
     for (ReceivedDeletedBlockInfo rdbi : srdb.getBlocks()) {
       switch (rdbi.getStatus()) {
       case DELETED_BLOCK:
-        removeStoredBlock(rdbi.getBlock(), node);
+        removeStoredBlock(storageInfo, rdbi.getBlock(), node);
         deleted++;
         break;
       case RECEIVED_BLOCK:

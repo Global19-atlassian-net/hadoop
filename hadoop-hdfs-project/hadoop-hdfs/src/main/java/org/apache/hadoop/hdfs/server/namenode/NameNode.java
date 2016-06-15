@@ -1660,6 +1660,10 @@ public class NameNode implements NameNodeStatusMXBean {
     return (state.equals(STANDBY_STATE));
   }
 
+  public boolean isActiveState() {
+    return (state.equals(ACTIVE_STATE));
+  }
+
   /**
    * Check that a request to change this node's HA state is valid.
    * In particular, verifies that, if auto failover is enabled, non-forced
