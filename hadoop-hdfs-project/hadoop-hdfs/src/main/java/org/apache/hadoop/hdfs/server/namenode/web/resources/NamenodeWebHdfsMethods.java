@@ -102,6 +102,7 @@ import org.apache.hadoop.hdfs.web.resources.TokenArgumentParam;
 import org.apache.hadoop.hdfs.web.resources.UriFsPathParam;
 import org.apache.hadoop.hdfs.web.resources.UserParam;
 import org.apache.hadoop.io.Text;
+import org.apache.hadoop.ipc.RetriableException;
 import org.apache.hadoop.ipc.Server;
 import org.apache.hadoop.net.NetworkTopology.InvalidTopologyException;
 import org.apache.hadoop.net.NodeBase;
@@ -168,7 +169,7 @@ public class NamenodeWebHdfsMethods {
       throws IOException {
      final NamenodeProtocols np = namenode.getRpcServer();
      if (np == null) {
-       throw new IOException("Namenode is in startup mode");
+       throw new RetriableException("Namenode is in startup mode");
      }
      return np;
   }

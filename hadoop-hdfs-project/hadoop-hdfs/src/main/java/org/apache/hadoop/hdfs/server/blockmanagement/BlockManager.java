@@ -1021,6 +1021,8 @@ public class BlockManager {
     while(it.hasNext()) {
       removeStoredBlock(it.next(), node);
     }
+    // Remove all pending DN messages referencing this DN.
+    pendingDNMessages.removeAllMessagesForDatanode(node);
 
     node.resetBlocks();
     invalidateBlocks.remove(node);
@@ -1046,6 +1048,9 @@ public class BlockManager {
    * datanode and log the operation
    */
   void addToInvalidates(final Block block, final DatanodeInfo datanode) {
+    if (!namesystem.isPopulatingReplQueues()) {
+      return;
+    }
     invalidateBlocks.add(block, datanode, true);
   }
 
@@ -1054,6 +1059,9 @@ public class BlockManager {
    * datanodes.
    */
   private void addToInvalidates(Block b) {
+    if (!namesystem.isPopulatingReplQueues()) {
+      return;
+    }
     StringBuilder datanodes = new StringBuilder();
     for(DatanodeStorageInfo storage : blocksMap.getStorages(b, State.NORMAL)) {
       final DatanodeDescriptor node = storage.getDatanodeDescriptor();
@@ -1095,7 +1103,8 @@ public class BlockManager {
     DatanodeDescriptor node = getDatanodeManager().getDatanode(dn);
     if (node == null) {
       throw new IOException("Cannot mark " + b
-          + " as corrupt because datanode " + dn + " does not exist");
+          + " as corrupt because datanode " + dn + " (" + dn.getDatanodeUuid()
+          + ") does not exist");
     }
 
     BlockCollection bc = b.corrupted.getBlockCollection();
@@ -1998,6 +2007,9 @@ public class BlockManager {
         // If the block is an out-of-date generation stamp or state,
         // but we're the standby, we shouldn't treat it as corrupt,
         // but instead just queue it for later processing.
+        // TODO: Pretty confident this should be s/storedBlock/block below,
+        // since we should be postponing the info of the reported block, not
+        // the stored block. See HDFS-6289 for more context.
         queueReportedBlock(dn, storageID, storedBlock, reportedState,
             QUEUE_REASON_CORRUPT_STATE);
       } else {
@@ -2041,6 +2053,20 @@ public class BlockManager {
   }
 
   /**
+   * Add this method to suport HDFS-8245. Please use the other.
+   * @see #queueReportedBlock(DatanodeDescriptor dn, String storageID, Block block,
+      ReplicaState reportedState, String reason)
+   * @param storageInfo
+   * @param block
+   * @param reportedState
+   * @param reason
+   */
+  private void queueReportedBlock(DatanodeStorageInfo storageInfo, Block block, ReplicaState reportedState,
+      String reason) {
+    queueReportedBlock(storageInfo.getDatanodeDescriptor(), storageInfo.getStorageID(), block, reportedState, reason);
+  }
+
+  /**
    * Try to process any messages that were previously queued for the given
    * block. This is called from FSEditLogLoader whenever a block's state
    * in the namespace has changed or a new block has been created.
@@ -2060,8 +2086,12 @@ public class BlockManager {
       if (LOG.isDebugEnabled()) {
         LOG.debug("Processing previouly queued message " + rbi);
       }
-      processAndHandleReportedBlock(rbi.getNode(), rbi.getStorageID(), 
-          rbi.getBlock(), rbi.getReportedState(), null);
+      if (rbi.getReportedState() == null) {
+        // This is a DELETE_BLOCK request
+        removeStoredBlock(rbi.getBlock(), rbi.getNode());
+      } else {
+        processAndHandleReportedBlock(rbi.getNode(), rbi.getStorageID(), rbi.getBlock(), rbi.getReportedState(), null);
+      }
     }
   }
   
@@ -2720,6 +2750,17 @@ public class BlockManager {
     }
   }
 
+  private void removeStoredBlock(DatanodeStorageInfo storageInfo, Block block,
+      DatanodeDescriptor node) {
+    if (shouldPostponeBlocksFromFuture &&
+        namesystem.isGenStampInFuture(block)) {
+      queueReportedBlock(storageInfo, block, null,
+          QUEUE_REASON_FUTURE_GENSTAMP);
+      return;
+    }
+    removeStoredBlock(block, node);
+  }
+
   /**
    * Modify (block-->datanode) map. Possibly generate replication tasks, if the
    * removed block is still valid.
@@ -2886,8 +2927,8 @@ public class BlockManager {
       throw new IOException(
           "Got incremental block report from unregistered or dead node");
     }
-
-    if (node.getStorageInfo(srdb.getStorage().getStorageID()) == null) {
+    DatanodeStorageInfo storageInfo = node.getStorageInfo(srdb.getStorage().getStorageID());
+    if (storageInfo == null) {
       // The DataNode is reporting an unknown storage. Usually the NN learns
       // about new storages from heartbeats but during NN restart we may
       // receive a block report or incremental report before the heartbeat.
@@ -2899,7 +2940,7 @@ public class BlockManager {
     for (ReceivedDeletedBlockInfo rdbi : srdb.getBlocks()) {
       switch (rdbi.getStatus()) {
       case DELETED_BLOCK:
-        removeStoredBlock(rdbi.getBlock(), node);
+        removeStoredBlock(storageInfo, rdbi.getBlock(), node);
         deleted++;
         break;
       case RECEIVED_BLOCK:
@@ -3013,10 +3054,14 @@ public class BlockManager {
   
   /**
    * On stopping decommission, check if the node has excess replicas.
-   * If there are any excess replicas, call processOverReplicatedBlock()
+   * If there are any excess replicas, call processOverReplicatedBlock().
+   * Process over replicated blocks only when active NN is out of safe mode.
    */
   void processOverReplicatedBlocksOnReCommission(
       final DatanodeDescriptor srcNode) {
+    if (!namesystem.isPopulatingReplQueues()) {
+      return;
+    }
     final Iterator<? extends Block> it = srcNode.getBlockIterator();
     int numOverReplicated = 0;
     while(it.hasNext()) {
@@ -3082,11 +3127,13 @@ public class BlockManager {
             }
           }
           if (!neededReplications.contains(block) &&
-            pendingReplications.getNumReplicas(block) == 0) {
+            pendingReplications.getNumReplicas(block) == 0 &&
+            namesystem.isPopulatingReplQueues()) {
             //
             // These blocks have been reported from the datanode
             // after the startDecommission method has been executed. These
             // blocks were in flight when the decommissioning was started.
+            // Process these blocks only when active NN is out of safe mode.
             //
             neededReplications.add(block,
                                    curReplicas,
@@ -3355,8 +3402,11 @@ public class BlockManager {
     public void run() {
       while (namesystem.isRunning()) {
         try {
-          computeDatanodeWork();
-          processPendingReplications();
+          // Process replication work only when active NN is out of safe mode.
+          if (namesystem.isPopulatingReplQueues()) {
+            computeDatanodeWork();
+            processPendingReplications();
+          }
           Thread.sleep(replicationRecheckInterval);
         } catch (Throwable t) {
           if (!namesystem.isRunning()) {

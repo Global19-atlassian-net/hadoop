@@ -257,4 +257,11 @@ public class CommonConfigurationKeys extends CommonConfigurationKeysPublic {
   public static final boolean RPC_METRICS_QUANTILE_ENABLE_DEFAULT = false;
   public static final String  RPC_METRICS_PERCENTILES_INTERVALS_KEY =
       "rpc.metrics.percentiles.intervals";
+
+  /**
+   * Add this key to support testcase in HDFS-7359 ONLY.
+   * @author dazhuang.su@dianping.com
+   * @see org.apache.hadoop.hdfs.qjournal.TestSecureNNWithQJM
+   */
+  public static final String IPC_CLIENT_CONNECT_MAX_RETRIES_ON_SASL_KEY = "ipc.client.connect.max.retries.on.sasl";
 }
