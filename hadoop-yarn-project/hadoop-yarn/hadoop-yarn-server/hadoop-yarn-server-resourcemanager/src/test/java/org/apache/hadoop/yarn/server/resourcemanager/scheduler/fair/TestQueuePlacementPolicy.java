@@ -19,6 +19,9 @@ package org.apache.hadoop.yarn.server.resourcemanager.scheduler.fair;
 
 import static org.junit.Assert.assertEquals;
 
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 
 import javax.xml.parsers.DocumentBuilder;
@@ -83,6 +86,20 @@ public class TestQueuePlacementPolicy {
     QueuePlacementPolicy policy = parse(sb.toString());
     assertEquals("root.specifiedq", policy.assignAppToQueue("specifiedq", "someuser"));
     assertEquals(null, policy.assignAppToQueue("default", "someuser"));
+  }
+  
+  @Test
+  public void testSpecial() throws Exception {
+    StringBuffer sb = new StringBuffer();
+    sb.append("<queuePlacementPolicy>");
+    sb.append("  <rule name='specified' />");
+    sb.append("  <rule name='special' rules='bipreempt:root.dw.bipreempt;ss' />");
+    sb.append("  <rule name='user' />");
+    sb.append("</queuePlacementPolicy>");
+    QueuePlacementPolicy policy = parse(sb.toString());
+    assertEquals("root.admin_highpriority", policy.assignAppToQueue("admin_highpriority", "bipreempt"));
+    assertEquals("root.dw.bipreempt", policy.assignAppToQueue("default", "bipreempt"));
+    assertEquals("root.searchcron", policy.assignAppToQueue("default", "searchcron"));
   }
   
   @Test (expected = AllocationConfigurationException.class)

@@ -19,10 +19,13 @@ package org.apache.hadoop.yarn.server.resourcemanager.scheduler.fair;
 
 import java.io.IOException;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.security.Groups;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
 import org.w3c.dom.Element;
@@ -225,5 +228,49 @@ public abstract class QueuePlacementRule {
     public boolean isTerminal() {
       return true;
     }
+  }
+  
+  public static class Special extends QueuePlacementRule {
+    private static final Log LOG = LogFactory.getLog(Special.class);
+    
+    private Map<String, String> mapping = Collections.synchronizedMap(new HashMap<String, String>());
+    
+    @Override
+    public QueuePlacementRule initialize(boolean create, Map<String, String> args) {
+      String rules = args.get("rules");
+      if (rules != null) {
+        for (String rule : rules.split(";")) {
+          String[] kv = rule.split(":");
+          if (kv.length != 2) {
+            continue;
+          }
+          String user = kv[0];
+          String queue = kv[1];
+          if (!queue.startsWith("root.")) {
+            queue = "root." + queue;
+          }
+          mapping.put(user, queue);
+          LOG.info("registered Mannual rule : assign " + user + " to " + queue);
+        }
+      }
+      this.create = create;
+      return this;
+    }
+
+    @Override
+    public boolean isTerminal() {
+      return false;
+    }
+
+    @Override
+    protected String getQueueForApp(String requestedQueue, String user, Groups groups,
+        Collection<String> configuredQueues) throws IOException {
+      String queue = mapping.get(user);
+      if (queue != null) {
+        return queue;
+      }
+      return "";
+    }
+
   }
 }

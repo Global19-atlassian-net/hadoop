@@ -44,6 +44,7 @@ public class QueuePlacementPolicy {
     map.put("specified", QueuePlacementRule.Specified.class);
     map.put("default", QueuePlacementRule.Default.class);
     map.put("reject", QueuePlacementRule.Reject.class);
+    map.put("special", QueuePlacementRule.Special.class);
     ruleClasses = Collections.unmodifiableMap(map);
   }
   
